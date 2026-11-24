@@ -1,9 +1,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Replace these with your own Supabase credentials.
-// Use the Project URL and Publishable key only.
-// NEVER use your Supabase secret/service_role key here.
+// Supabase credentials
+// Use ONLY your Project URL and Publishable key.
+// Never use your secret/service_role key here.
 
 const SUPABASE_URL = "https://jlptbfifmfyuhiacmahi.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_CmXNCTtrYGl_bR5NqKPWTg_saXCTo2e";
@@ -17,6 +17,9 @@ const configured =
 const supabase = configured
   ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
   : null;
+
+const PROTEIN_TARGET = 150;
+const STORAGE_KEY = "gym-planner-v1";
 
 const workouts = [
   {day:"Monday",short:"MON",tab:"Chest / Back",title:"Chest + Back A",focus:"Strength emphasis · Cardio finisher",cardio:"10–12 min incline treadmill",exercises:[
@@ -77,26 +80,43 @@ const workouts = [
   ]}
 ];
 
-const STORAGE_KEY = "gym-planner-v1";
+// Application state
 let selectedDay = (new Date().getDay() + 6) % 7;
 let saved = loadLocal();
+
 let completed = saved.completed || {};
 let checkin = saved.checkin || {};
+let proteinLogs = saved.proteinLogs || {};
+let cardioLogs = saved.cardioLogs || {};
+let liftLogs = saved.liftLogs || {};
+
 let currentUser = null;
 let signupMode = false;
-let saveTimer;
+const saveTimers = {};
 
+// Local storage
 function loadLocal() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
-  catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
 }
 
 function persistLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({completed,checkin}));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    completed,
+    checkin,
+    proteinLogs,
+    cardioLogs,
+    liftLogs
+  }));
 }
 
+// Date helpers
 function dateKey() {
   const d = new Date();
+
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
@@ -104,9 +124,10 @@ function completionKey(day = selectedDay) {
   return `${dateKey()}-${day}`;
 }
 
-function status(message, type = "") {
+// UI helpers
+function status(messageText, type = "") {
   const el = document.querySelector("#connection-status");
-  el.textContent = message;
+  el.textContent = messageText;
   el.className = `status-pill ${type}`;
 }
 
@@ -114,10 +135,12 @@ function message(selector, text) {
   document.querySelector(selector).textContent = text || "";
 }
 
+// Workout tabs
 function renderTabs() {
   document.querySelector("#day-tabs").innerHTML = workouts.map((w,i) =>
     `<button class="day-tab ${i===selectedDay?"active":""}" data-day="${i}">
-      <strong>${w.short}</strong><span>${w.tab}</span>
+      <strong>${w.short}</strong>
+      <span>${w.tab}</span>
     </button>`
   ).join("");
 
@@ -129,96 +152,378 @@ function renderTabs() {
   });
 }
 
+// Workout rendering
 function renderWorkout() {
   const workout = workouts[selectedDay];
   const key = completionKey();
   const done = completed[key] || [];
 
-  document.querySelector("#day-label").textContent = workout.day.toUpperCase();
-  document.querySelector("#workout-title").textContent = workout.title;
-  document.querySelector("#workout-focus").textContent = workout.focus;
-  document.querySelector("#cardio-detail").textContent = workout.cardio;
+  document.querySelector("#day-label").textContent =
+    workout.day.toUpperCase();
+
+  document.querySelector("#workout-title").textContent =
+    workout.title;
+
+  document.querySelector("#workout-focus").textContent =
+    workout.focus;
+
+  document.querySelector("#cardio-detail").textContent =
+    workout.cardio;
 
   document.querySelector("#exercise-list").innerHTML =
     workout.exercises.map(([id,name,reps]) => `
       <label class="exercise-item ${done.includes(id)?"done":""}">
-        <input type="checkbox" data-exercise="${id}" ${done.includes(id)?"checked":""}>
+        <input type="checkbox" data-exercise="${id}"
+          ${done.includes(id)?"checked":""}>
         <span>
           <span class="exercise-name">${name}</span>
           <span class="exercise-meta">${reps}</span>
         </span>
-        <span class="exercise-tag">${done.includes(id)?"Completed":"Working sets"}</span>
+        <span class="exercise-tag">
+          ${done.includes(id)?"Completed":"Working sets"}
+        </span>
       </label>
     `).join("");
 
   document.querySelectorAll("[data-exercise]").forEach(input => {
     input.addEventListener("change", () => {
       const items = new Set(completed[key] || []);
-      if (input.checked) items.add(input.dataset.exercise);
-      else items.delete(input.dataset.exercise);
+
+      if (input.checked) {
+        items.add(input.dataset.exercise);
+      } else {
+        items.delete(input.dataset.exercise);
+      }
+
       completed[key] = [...items];
+
       persistLocal();
       renderWorkout();
       scheduleSave("workout");
     });
   });
 
-  const percent = Math.round(done.length / workout.exercises.length * 100);
-  document.querySelector("#progress-ring").style.setProperty("--progress",`${percent}%`);
-  document.querySelector("#progress-percent").textContent = `${percent}%`;
+  const percent = Math.round(
+    done.length / workout.exercises.length * 100
+  );
+
+  document.querySelector("#progress-ring")
+    .style.setProperty("--progress",`${percent}%`);
+
+  document.querySelector("#progress-percent").textContent =
+    `${percent}%`;
+
   document.querySelector("#completion-title").textContent =
     percent === 100 ? "Session complete" : "Keep building";
+
   document.querySelector("#completion-count").textContent =
     `${done.length} of ${workout.exercises.length} activities completed`;
 
   renderTabs();
+  renderLiftTracker();
+  renderCardio();
 }
 
+// Exercise weight, sets and reps
+function renderLiftTracker() {
+  const container = document.querySelector("#lift-tracker");
+  const todayRecords = liftLogs[dateKey()] || {};
+
+  container.innerHTML = workouts[selectedDay].exercises.map(
+    ([id,name,reps]) => {
+      const record = todayRecords[id] || {};
+
+      return `
+        <div class="lift-card">
+          <h3>${name}</h3>
+
+          <form class="lift-form" data-lift="${id}">
+            <div class="lift-input-grid">
+              <label>
+                Weight (kg)
+                <input type="number" name="weight"
+                  min="0" step="0.5"
+                  placeholder="0"
+                  value="${record.weight ?? ""}" required>
+              </label>
+
+              <label>
+                Sets
+                <input type="number" name="sets"
+                  min="1" max="20" step="1"
+                  placeholder="3"
+                  value="${record.sets ?? ""}" required>
+              </label>
+
+              <label>
+                Reps per set
+                <input type="number" name="reps"
+                  min="1" max="100" step="1"
+                  placeholder="8"
+                  value="${record.reps ?? ""}" required>
+              </label>
+            </div>
+
+            <div class="lift-actions">
+              <button class="button button-primary" type="submit">
+                Save record
+              </button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+  ).join("");
+
+  container.querySelectorAll(".lift-form").forEach(form => {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+
+      const id = form.dataset.lift;
+      const exercise = workouts[selectedDay].exercises
+        .find(item => item[0] === id);
+
+      const weight = Number(form.elements.weight.value);
+      const sets = Number(form.elements.sets.value);
+      const reps = Number(form.elements.reps.value);
+
+      if (
+        !Number.isFinite(weight) || weight < 0 ||
+        !Number.isInteger(sets) || sets < 1 ||
+        !Number.isInteger(reps) || reps < 1
+      ) {
+        message("#lift-message","Please enter valid weight, sets and reps.");
+        return;
+      }
+
+      if (!liftLogs[dateKey()]) {
+        liftLogs[dateKey()] = {};
+      }
+
+      liftLogs[dateKey()][id] = {
+        exercise_id: id,
+        exercise_name: exercise[1],
+        weight,
+        sets,
+        reps,
+        day: workouts[selectedDay].day,
+        updated_at: new Date().toISOString()
+      };
+
+      persistLocal();
+      scheduleSave("lift");
+
+      message("#lift-message",
+        `${exercise[1]} record saved successfully.`);
+
+      renderHistory();
+    });
+  });
+
+  renderHistory();
+}
+
+// Protein tracker
+function renderProtein() {
+  const grams = Number(proteinLogs[dateKey()] || 0);
+  const percentage = Math.min(
+    grams / PROTEIN_TARGET * 100,
+    100
+  );
+
+  document.querySelector("#protein-total").textContent =
+    `${grams} g`;
+
+  document.querySelector("#protein-remaining").textContent =
+    grams >= PROTEIN_TARGET
+      ? "Daily target achieved!"
+      : `${PROTEIN_TARGET - grams} g remaining`;
+
+  document.querySelector("#protein-progress-fill")
+    .style.width = `${percentage}%`;
+
+  document.querySelector("#protein-input").value =
+    grams || "";
+}
+
+document.querySelector("#protein-form").addEventListener(
+  "submit", event => {
+    event.preventDefault();
+
+    const grams = Number(
+      document.querySelector("#protein-input").value
+    );
+
+    if (!Number.isFinite(grams) || grams < 0 || grams > 1000) {
+      message("#protein-message","Enter a valid protein amount.");
+      return;
+    }
+
+    proteinLogs[dateKey()] = grams;
+
+    persistLocal();
+    renderProtein();
+    scheduleSave("protein");
+
+    message("#protein-message",
+      "Daily protein intake saved.");
+  }
+);
+
+// Cardio tracker
+function renderCardio() {
+  const workout = workouts[selectedDay];
+
+  document.querySelector("#cardio-plan-text").textContent =
+    workout.cardio;
+
+  document.querySelector("#cardio-completed").checked =
+    Boolean(cardioLogs[dateKey()]);
+}
+
+document.querySelector("#cardio-completed").addEventListener(
+  "change", event => {
+    cardioLogs[dateKey()] = event.target.checked;
+
+    persistLocal();
+    scheduleSave("cardio");
+
+    message("#cardio-message",
+      event.target.checked
+        ? "Cardio completed. Great work!"
+        : "Cardio marked as incomplete.");
+  }
+);
+
+// Strength history
+function renderHistory() {
+  const container = document.querySelector("#strength-history");
+
+  const records = [];
+
+  Object.entries(liftLogs).forEach(([date, exercises]) => {
+    Object.values(exercises || {}).forEach(record => {
+      records.push({...record,date});
+    });
+  });
+
+  records.sort((a,b) => {
+    if (a.date !== b.date) {
+      return b.date.localeCompare(a.date);
+    }
+    return (b.updated_at || "").localeCompare(a.updated_at || "");
+  });
+
+  const recent = records.slice(0,15);
+
+  if (!recent.length) {
+    container.textContent = "No lifting records yet. Save your first exercise record above.";
+    return;
+  }
+
+  container.innerHTML = recent.map(record => `
+    <div class="history-card">
+      <h3>${record.exercise_name}</h3>
+      <p><strong>${record.weight} kg</strong> · ${record.sets} sets × ${record.reps} reps</p>
+      <p>${record.day || ""} · ${record.date}</p>
+    </div>
+  `).join("");
+}
+
+// Supabase cloud synchronization
 function scheduleSave(type) {
   if (!currentUser || !supabase) return;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveCloud(type),500);
+
+  clearTimeout(saveTimers[type]);
+
+  saveTimers[type] = setTimeout(() => {
+    saveCloud(type);
+  },500);
 }
 
 async function saveCloud(type) {
   if (!currentUser || !supabase) return;
 
-  const payload = type === "workout"
-    ? {day_index:selectedDay,completed:completed[completionKey()] || []}
-    : {...checkin};
+  let payload = {};
+
+  if (type === "workout") {
+    const prefix = `${dateKey()}-`;
+
+    const completedByDay = {};
+
+    Object.entries(completed).forEach(([key,value]) => {
+      if (key.startsWith(prefix)) {
+        completedByDay[key.slice(prefix.length)] = value;
+      }
+    });
+
+    payload = {completed_by_day: completedByDay};
+  }
+
+  if (type === "checkin") {
+    payload = {...checkin};
+  }
+
+  if (type === "protein") {
+    payload = {grams: Number(proteinLogs[dateKey()] || 0)};
+  }
+
+  if (type === "cardio") {
+    payload = {completed: Boolean(cardioLogs[dateKey()])};
+  }
+
+  if (type === "lift") {
+    payload = {records: liftLogs[dateKey()] || {}};
+  }
 
   const row = {
-    user_id:currentUser.id,
-    record_date:dateKey(),
-    record_type:type,
+    user_id: currentUser.id,
+    record_date: dateKey(),
+    record_type: type,
     payload,
-    updated_at:new Date().toISOString()
+    updated_at: new Date().toISOString()
   };
 
   const {error} = await supabase
     .from("user_progress")
-    .upsert(row,{onConflict:"user_id,record_date,record_type"});
+    .upsert(row, {
+      onConflict: "user_id,record_date,record_type"
+    });
 
   if (error) {
     console.error("Cloud save failed:",error);
     status("Cloud sync error","error");
-    message("#checkin-message",error.message);
-  } else {
-    status("Cloud synced","online");
-    message("#checkin-message","Progress saved to your Supabase account.");
+
+    const target = {
+      workout:"#lift-message",
+      checkin:"#checkin-message",
+      protein:"#protein-message",
+      cardio:"#cardio-message",
+      lift:"#lift-message"
+    }[type];
+
+    if (target) {
+      message(target,`Cloud save failed: ${error.message}`);
+    }
+
+    return;
   }
+
+  status("Cloud synced","online");
 }
 
+// Load records from Supabase
 async function loadCloud() {
   if (!currentUser || !supabase) return;
 
   status("Syncing…");
+
   const {data,error} = await supabase
     .from("user_progress")
     .select("record_date,record_type,payload")
     .eq("user_id",currentUser.id)
     .order("record_date",{ascending:false})
-    .limit(100);
+    .limit(500);
 
   if (error) {
     console.error("Cloud load failed:",error);
@@ -227,40 +532,99 @@ async function loadCloud() {
   }
 
   for (const row of data || []) {
-    if (row.record_type === "workout" && row.payload?.completed) {
-      const key = `${row.record_date}-${row.payload.day_index}`;
-      completed[key] = [...new Set([
-        ...(completed[key] || []),
-        ...row.payload.completed
-      ])];
+    const payload = row.payload || {};
+    const date = row.record_date;
+
+    if (row.record_type === "workout") {
+      if (payload.completed_by_day) {
+        Object.entries(payload.completed_by_day).forEach(
+          ([day,items]) => {
+            const key = `${date}-${day}`;
+
+            completed[key] = [
+              ...new Set([
+                ...(completed[key] || []),
+                ...(items || [])
+              ])
+            ];
+          }
+        );
+      } else if (payload.completed) {
+        // Compatibility with your previous workout records
+        const key = `${date}-${payload.day_index}`;
+
+        completed[key] = [
+          ...new Set([
+            ...(completed[key] || []),
+            ...payload.completed
+          ])
+        ];
+      }
     }
+
     if (row.record_type === "checkin") {
-      checkin = {...checkin,...row.payload};
+      checkin = {...checkin,...payload};
+    }
+
+    if (row.record_type === "protein") {
+      proteinLogs[date] = Number(payload.grams || 0);
+    }
+
+    if (row.record_type === "cardio") {
+      cardioLogs[date] = Boolean(payload.completed);
+    }
+
+    if (row.record_type === "lift") {
+      liftLogs[date] = {
+        ...(liftLogs[date] || {}),
+        ...(payload.records || {})
+      };
     }
   }
 
   persistLocal();
+
   renderWorkout();
+  renderProtein();
+  renderCardio();
+  renderHistory();
   fillCheckin();
+
   status("Cloud synced","online");
 }
 
+// Weekly check-in
 function fillCheckin() {
-  document.querySelector("#weight-input").value = checkin.weight || "";
-  document.querySelector("#waist-input").value = checkin.waist || "";
-  document.querySelector("#bench-input").value = checkin.bench || "";
+  document.querySelector("#weight-input").value =
+    checkin.weight || "";
+
+  document.querySelector("#waist-input").value =
+    checkin.waist || "";
+
+  document.querySelector("#bench-input").value =
+    checkin.bench || "";
 }
 
+// Authentication UI
 function updateAuthUI() {
   document.querySelector("#auth-button").textContent =
     currentUser ? currentUser.email : "Sign in";
-  document.querySelector("#sign-out-button").classList.toggle("hidden",!currentUser);
+
+  document.querySelector("#sign-out-button")
+    .classList.toggle("hidden",!currentUser);
+
   document.querySelector("#auth-heading").textContent =
-    currentUser ? "Account connected" : (signupMode ? "Create account" : "Sign in to sync");
+    currentUser
+      ? "Account connected"
+      : (signupMode ? "Create account" : "Sign in to sync");
+
   document.querySelector("#auth-submit").textContent =
     signupMode ? "Create account" : "Sign in";
+
   document.querySelector("#toggle-auth-mode").textContent =
-    signupMode ? "Already have an account? Sign in" : "Need an account? Create one";
+    signupMode
+      ? "Already have an account? Sign in"
+      : "Need an account? Create one";
 }
 
 async function refreshSession() {
@@ -270,109 +634,162 @@ async function refreshSession() {
   }
 
   const {data,error} = await supabase.auth.getSession();
+
   if (error) console.error(error);
 
   currentUser = data?.session?.user || null;
+
   updateAuthUI();
 
-  if (currentUser) await loadCloud();
-  else status("Signed out");
+  if (currentUser) {
+    await loadCloud();
+  } else {
+    status("Signed out");
+  }
 }
 
+// Open and close authentication dialog
 document.querySelector("#auth-button").addEventListener("click",() => {
   updateAuthUI();
   document.querySelector("#auth-dialog").showModal();
 });
 
-document.querySelector("#toggle-auth-mode").addEventListener("click",() => {
-  signupMode = !signupMode;
-  updateAuthUI();
-  message("#auth-message","");
+document.querySelector("#close-auth").addEventListener("click",() => {
+  document.querySelector("#auth-dialog").close();
 });
 
-document.querySelector("#auth-form").addEventListener("submit",async event => {
-  event.preventDefault();
-
-  if (!supabase) {
-    message("#auth-message","Add your Supabase credentials in app.js first.");
-    return;
-  }
-
-  const email = document.querySelector("#auth-email").value.trim();
-  const password = document.querySelector("#auth-password").value;
-  const button = document.querySelector("#auth-submit");
-
-  button.disabled = true;
-  button.textContent = "Please wait…";
-
-  const result = signupMode
-    ? await supabase.auth.signUp({
-        email,
-        password,
-        options:{emailRedirectTo:window.location.origin}
-      })
-    : await supabase.auth.signInWithPassword({email,password});
-
-  button.disabled = false;
-  updateAuthUI();
-
-  if (result.error) {
-    message("#auth-message",result.error.message);
-  } else if (signupMode && !result.data.session) {
-    message("#auth-message","Account created. Check your email to confirm, then sign in.");
-  } else {
-    currentUser = result.data.user || result.data.session?.user || null;
-    message("#auth-message","Signed in successfully.");
-    if (currentUser) await loadCloud();
-  }
-});
-
-document.querySelector("#sign-out-button").addEventListener("click",async () => {
-  if (!supabase) return;
-  const {error} = await supabase.auth.signOut();
-
-  if (error) message("#auth-message",error.message);
-  else {
-    currentUser = null;
+document.querySelector("#toggle-auth-mode").addEventListener(
+  "click",() => {
+    signupMode = !signupMode;
     updateAuthUI();
-    status("Signed out");
-    message("#auth-message","You have signed out.");
+    message("#auth-message","");
   }
-});
+);
 
+// Login and signup
+document.querySelector("#auth-form").addEventListener(
+  "submit",async event => {
+    event.preventDefault();
+
+    if (!supabase) {
+      message("#auth-message",
+        "Check your Supabase credentials in app.js.");
+      return;
+    }
+
+    const email =
+      document.querySelector("#auth-email").value.trim();
+
+    const password =
+      document.querySelector("#auth-password").value;
+
+    const button = document.querySelector("#auth-submit");
+
+    button.disabled = true;
+    button.textContent = "Please wait…";
+
+    const result = signupMode
+      ? await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        })
+      : await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+    button.disabled = false;
+    updateAuthUI();
+
+    if (result.error) {
+      message("#auth-message",result.error.message);
+    } else if (signupMode && !result.data.session) {
+      message("#auth-message",
+        "Account created. Check your email to confirm, then sign in.");
+    } else {
+      currentUser =
+        result.data.user || result.data.session?.user || null;
+
+      message("#auth-message","Signed in successfully.");
+
+      if (currentUser) {
+        await loadCloud();
+      }
+    }
+  }
+);
+
+// Sign out
+document.querySelector("#sign-out-button").addEventListener(
+  "click",async () => {
+    if (!supabase) return;
+
+    const {error} = await supabase.auth.signOut();
+
+    if (error) {
+      message("#auth-message",error.message);
+    } else {
+      currentUser = null;
+      updateAuthUI();
+      status("Signed out");
+      message("#auth-message","You have signed out.");
+    }
+  }
+);
+
+// Reset workout
 document.querySelector("#reset-day").addEventListener("click",() => {
   completed[completionKey()] = [];
+
   persistLocal();
   renderWorkout();
   scheduleSave("workout");
 });
 
-document.querySelector("#checkin-form").addEventListener("submit",event => {
-  event.preventDefault();
+// Save weekly check-in
+document.querySelector("#checkin-form").addEventListener(
+  "submit",event => {
+    event.preventDefault();
 
-  checkin = {
-    weight:document.querySelector("#weight-input").value,
-    waist:document.querySelector("#waist-input").value,
-    bench:document.querySelector("#bench-input").value
-  };
+    checkin = {
+      weight:document.querySelector("#weight-input").value,
+      waist:document.querySelector("#waist-input").value,
+      bench:document.querySelector("#bench-input").value
+    };
 
-  persistLocal();
-  scheduleSave("checkin");
-  message("#checkin-message",
-    currentUser ? "Check-in saved; syncing…" : "Saved on this device. Sign in to sync across devices.");
-});
+    persistLocal();
+    scheduleSave("checkin");
 
+    message("#checkin-message",
+      currentUser
+        ? "Check-in saved; syncing…"
+        : "Saved on this device. Sign in to sync across devices.");
+  }
+);
+
+// Listen for authentication changes
 if (supabase) {
   supabase.auth.onAuthStateChange((_event,session) => {
     currentUser = session?.user || null;
     updateAuthUI();
-    if (currentUser) setTimeout(loadCloud,0);
-    else status("Signed out");
+
+    if (currentUser) {
+      setTimeout(() => loadCloud(),0);
+    } else {
+      status("Signed out");
+    }
   });
 }
 
+// Start application
 renderTabs();
 renderWorkout();
+renderProtein();
+renderCardio();
+renderHistory();
 fillCheckin();
 updateAuthUI();
 refreshSession();
