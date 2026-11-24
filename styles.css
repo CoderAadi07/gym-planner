@@ -120,99 +120,43 @@ main { display: grid; gap: 26px; }
 .coach-note strong { font-size: 12px; color: var(--lime); }
 .coach-note p { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 6px 0 0; }
 
-/* New tracking sections */
 .tracker-panel h2, .panel h2 { font-family: 'Space Grotesk'; }
 .tracker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-
 .tracker-form { display: grid; gap: 12px; margin-top: 22px; }
 .tracker-form label, .tracker-list label {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
+  display: grid; gap: 8px; color: var(--muted); font-size: 12px;
 }
-
-input, select {
-  font-family: 'DM Sans', sans-serif;
-}
-
+input, select { font-family: 'DM Sans', sans-serif; }
 .tracker-form input, .tracker-list input {
-  width: 100%;
-  min-width: 0;
-  background: #0b140e;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px;
-  color: var(--text);
-  font-size: 13px;
+  width: 100%; min-width: 0; background: #0b140e; border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px; color: var(--text); font-size: 13px;
 }
-
 .protein-progress { margin-top: 23px; }
-.protein-progress-bar {
-  height: 12px;
-  overflow: hidden;
-  border-radius: 20px;
-  background: #304136;
-}
+.protein-progress-bar { height: 12px; overflow: hidden; border-radius: 20px; background: #304136; }
 .protein-progress-bar span {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: var(--lime);
-  border-radius: inherit;
-  transition: width .3s ease;
+  display: block; width: 0; height: 100%; background: var(--lime);
+  border-radius: inherit; transition: width .3s ease;
 }
-.protein-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-  gap: 12px;
-}
-.protein-summary strong {
-  font: 700 24px 'Space Grotesk';
-}
+.protein-summary { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; }
+.protein-summary strong { font: 700 24px 'Space Grotesk'; }
 .protein-summary span { font-size: 12px; color: var(--muted); }
 
 .cardio-plan {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  padding: 17px;
-  background: #0e1812;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  margin-top: 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 15px;
+  padding: 17px; background: #0e1812; border: 1px solid var(--line);
+  border-radius: 14px; margin-top: 22px;
 }
 .cardio-plan strong { font-size: 13px; }
 .cardio-plan p { font-size: 12px; color: var(--muted); margin: 7px 0 0; }
-.cardio-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
+.cardio-check { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .cardio-check input { width: 18px; height: 18px; accent-color: var(--lime); }
 
 .tracker-list, .history-list { display: grid; gap: 12px; margin-top: 18px; }
 .lift-card, .history-card {
-  background: #0e1812;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 16px;
+  background: #0e1812; border: 1px solid var(--line); border-radius: 14px; padding: 16px;
 }
-.lift-card h3, .history-card h3 {
-  font: 600 15px 'Space Grotesk';
-  margin: 0 0 13px;
-}
-.lift-input-grid {
-  display: grid;
-  grid-template-columns: repeat(3,1fr);
-  gap: 10px;
-}
+.lift-card h3, .history-card h3 { font: 600 15px 'Space Grotesk'; margin: 0 0 13px; }
+.lift-input-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
 .lift-input-grid label { min-width: 0; }
 .lift-input-grid input { margin-top: 7px; }
 .lift-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
@@ -238,6 +182,71 @@ input, select {
 .guidance-grid strong { color: var(--text); }
 footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5px; }
 
+/* Weekly Progress History */
+.weekly-history-panel { overflow: hidden; }
+.weekly-heading { gap: 20px; align-items: flex-end; }
+.week-selector-label {
+  display: grid; gap: 7px; min-width: 210px;
+  color: var(--muted); font-size: 12px;
+}
+.week-selector-label select {
+  width: 100%; background: #0b140e; border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px; color: var(--text); font-size: 13px;
+}
+.week-range {
+  margin: 22px 0 15px; padding: 13px 16px;
+  background: #0e1812; border: 1px solid var(--line);
+  border-radius: 12px; color: var(--lime); font-size: 13px; font-weight: 600;
+}
+.weekly-stats-grid {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+}
+.weekly-stat-card {
+  background: #0e1812; border: 1px solid var(--line);
+  border-radius: 15px; padding: 17px; min-width: 0;
+}
+.weekly-stat-card span, .weekly-stat-card small {
+  display: block; color: var(--muted); font-size: 11px;
+}
+.weekly-stat-card strong {
+  display: block; font: 700 25px 'Space Grotesk';
+  margin: 10px 0 6px; overflow-wrap: anywhere;
+}
+.weekly-detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px; margin-top: 16px;
+}
+.weekly-detail-card {
+  background: #0e1812; border: 1px solid var(--line);
+  border-radius: 15px; padding: 18px; min-width: 0;
+}
+.weekly-detail-card h3 {
+  font: 600 16px 'Space Grotesk'; margin: 0 0 15px;
+}
+.week-day-list { display: grid; gap: 10px; }
+.week-day-row {
+  display: grid; grid-template-columns: 48px 1fr auto;
+  align-items: center; gap: 10px; font-size: 12px;
+}
+.week-day-row > span:first-child { color: var(--muted); }
+.week-day-bar {
+  height: 9px; background: #304136; border-radius: 20px; overflow: hidden;
+}
+.week-day-bar span {
+  display: block; height: 100%; background: var(--lime);
+  border-radius: inherit;
+}
+.week-day-value { min-width: 45px; text-align: right; font-weight: 600; }
+.weight-summary { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.weight-summary strong { color: var(--text); }
+.weight-change { color: var(--lime); font-weight: 700; }
+.weekly-strength-card { margin-top: 14px; }
+.weekly-strength-card .history-list { margin-top: 0; }
+.week-empty {
+  color: var(--muted); font-size: 12px; line-height: 1.6;
+  padding: 10px 0;
+}
+
 .auth-dialog { width: min(430px,calc(100% - 28px)); background: #142019; color: var(--text); border: 1px solid var(--line); border-radius: 20px; padding: 25px; }
 .auth-dialog::backdrop { background: #000a; backdrop-filter: blur(5px); }
 .dialog-close-row { display: flex; justify-content: flex-end; margin: -8px -8px 10px; }
@@ -260,6 +269,10 @@ footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5p
   .topbar { align-items: flex-start; gap: 12px; }
   .top-actions { flex-direction: column; align-items: flex-end; }
   .session-length { display: none; }
+  .weekly-stats-grid { grid-template-columns: repeat(2,1fr); }
+  .weekly-detail-grid { grid-template-columns: 1fr; }
+  .weekly-heading { align-items: stretch; flex-direction: column; }
+  .week-selector-label { min-width: 0; }
 }
 @media(max-width:420px) {
   .day-tabs { grid-template-columns: repeat(2,1fr); }
@@ -270,4 +283,8 @@ footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5p
   .lift-input-grid { grid-template-columns: 1fr; }
   .protein-summary { align-items: flex-start; flex-direction: column; }
   .cardio-plan { align-items: flex-start; flex-direction: column; }
+  .weekly-stats-grid { grid-template-columns: 1fr 1fr; }
+  .weekly-stat-card { padding: 13px; }
+  .weekly-stat-card strong { font-size: 21px; }
+  .week-day-row { grid-template-columns: 42px 1fr auto; gap: 7px; }
 }
