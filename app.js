@@ -250,82 +250,236 @@ function renderWorkout() {
   renderCardio();
 }
 
-// Exercise weight, sets and reps
+
+// Exercise weight and individual set tracking
+
+function getSetEntries(record, plannedSets = 3, plannedReps = 8) {
+  if (Array.isArray(record?.setEntries) && record.setEntries.length) {
+    return record.setEntries.map(set => ({
+      weight: set.weight ?? "",
+      reps: set.reps ?? ""
+    }));
+  }
+
+  // Read older records that used one shared weight and rep value.
+  const count = Math.max(1, Number(record?.sets) || plannedSets);
+
+  return Array.from({length: count}, () => ({
+    weight: record?.weight ?? "",
+    reps: record?.reps ?? plannedReps
+  }));
+}
+
 function renderLiftTracker() {
   const container = document.querySelector("#lift-tracker");
   const todayRecords = liftLogs[dateKey()] || {};
 
-  container.innerHTML = workouts[selectedDay].exercises.map(([id,name]) => {
+  container.innerHTML = workouts[selectedDay].exercises.map(([id, name, prescription]) => {
     const record = todayRecords[id] || {};
+    const plannedSets = Number(String(prescription || "").match(/^\d+/)?.[0]) || 3;
+    const plannedReps = Number(String(prescription || "").match(/\d+/g)?.[1]) || 8;
+    const entries = getSetEntries(record, plannedSets, plannedReps);
 
     return `
       <div class="lift-card">
         <h3>${name}</h3>
+        <p class="muted">${prescription || "Individual set tracking"}</p>
+
         <form class="lift-form" data-lift="${id}">
-          <div class="lift-input-grid">
-            <label>Weight (kg)
-              <input type="number" name="weight" min="0" step="0.5"
-                placeholder="0" value="${record.weight ?? ""}" required>
-            </label>
-            <label>Sets
-              <input type="number" name="sets" min="1" max="20" step="1"
-                placeholder="3" value="${record.sets ?? ""}" required>
-            </label>
-            <label>Reps per set
-              <input type="number" name="reps" min="1" max="100" step="1"
-                placeholder="8" value="${record.reps ?? ""}" required>
-            </label>
+          <div class="individual-sets">
+            ${entries.map((set, index) => `
+              <div class="lift-set-row">
+                <strong>Set ${index + 1}</strong>
+
+                <label>
+                  Weight (kg)
+                  <input
+                    type="number"
+                    name="setWeight"
+                    min="0"
+                    step="0.5"
+                    placeholder="0"
+                    value="${set.weight}"
+                    required
+                  >
+                </label>
+
+                <label>
+                  Reps
+                  <input
+                    type="number"
+                    name="setReps"
+                    min="1"
+                    max="100"
+                    step="1"
+                    placeholder="8"
+                    value="${set.reps}"
+                    required
+                  >
+                </label>
+
+                <button
+                  type="button"
+                  class="button button-quiet remove-set"
+                  data-remove-set
+                  aria-label="Remove set ${index + 1}"
+                >×</button>
+              </div>
+            `).join("")}
           </div>
+
           <div class="lift-actions">
-            <button class="button button-primary" type="submit">Save record</button>
+            <button type="button" class="button button-quiet" data-add-set>
+              + Add Set
+            </button>
+
+            <button class="button button-primary" type="submit">
+              Save Exercise
+            </button>
           </div>
         </form>
       </div>
     `;
   }).join("");
 
+  // Add or remove individual sets.
   container.querySelectorAll(".lift-form").forEach(form => {
-    form.addEventListener("submit",event => {
+    form.addEventListener("click", event => {
+      const addButton = event.target.closest("[data-add-set]");
+      const removeButton = event.target.closest("[data-remove-set]");
+      const rows = form.querySelector(".individual-sets");
+
+      if (addButton) {
+        const count = rows.querySelectorAll(".lift-set-row").length;
+
+        if (count >= 20) {
+          message("#lift-message", "Maximum 20 sets allowed.");
+          return;
+        }
+
+        const nextNumber = count + 1;
+        const row = document.createElement("div");
+        row.className = "lift-set-row";
+
+        row.innerHTML = `
+          <strong>Set ${nextNumber}</strong>
+
+          <label>
+            Weight (kg)
+            <input
+              type="number"
+              name="setWeight"
+              min="0"
+              step="0.5"
+              placeholder="0"
+              required
+            >
+          </label>
+
+          <label>
+            Reps
+            <input
+              type="number"
+              name="setReps"
+              min="1"
+              max="100"
+              step="1"
+              placeholder="8"
+              required
+            >
+          </label>
+
+          <button
+            type="button"
+            class="button button-quiet remove-set"
+            data-remove-set
+            aria-label="Remove set ${nextNumber}"
+          >×</button>
+        `;
+
+        rows.appendChild(row);
+        updateSetNumbers(rows);
+      }
+
+      if (removeButton) {
+        const allRows = rows.querySelectorAll(".lift-set-row");
+
+        if (allRows.length <= 1) {
+          message("#lift-message", "An exercise must have at least one set.");
+          return;
+        }
+
+        removeButton.closest(".lift-set-row").remove();
+        updateSetNumbers(rows);
+      }
+    });
+
+    // Save all sets separately.
+    form.addEventListener("submit", event => {
       event.preventDefault();
 
       const id = form.dataset.lift;
       const exercise = workouts[selectedDay].exercises.find(item => item[0] === id);
 
-      const weight = Number(form.elements.weight.value);
-      const sets = Number(form.elements.sets.value);
-      const reps = Number(form.elements.reps.value);
+      const setRows = [...form.querySelectorAll(".lift-set-row")];
 
-      if (
-        !Number.isFinite(weight) || weight < 0 ||
-        !Number.isInteger(sets) || sets < 1 ||
-        !Number.isInteger(reps) || reps < 1
-      ) {
-        message("#lift-message","Please enter valid weight, sets and reps.");
+      const setEntries = setRows.map(row => ({
+        weight: Number(row.querySelector('[name="setWeight"]').value),
+        reps: Number(row.querySelector('[name="setReps"]').value)
+      }));
+
+      const valid = setEntries.every(set =>
+        Number.isFinite(set.weight) &&
+        set.weight >= 0 &&
+        Number.isInteger(set.reps) &&
+        set.reps >= 1 &&
+        set.reps <= 100
+      );
+
+      if (!valid || !setEntries.length) {
+        message("#lift-message", "Please enter valid weight and reps for every set.");
         return;
       }
 
-      if (!liftLogs[dateKey()]) liftLogs[dateKey()] = {};
+      const today = dateKey();
 
-      liftLogs[dateKey()][id] = {
-        exercise_id:id,
-        exercise_name:exercise[1],
-        weight,
-        sets,
-        reps,
-        day:workouts[selectedDay].day,
-        updated_at:new Date().toISOString()
+      if (!liftLogs[today]) liftLogs[today] = {};
+
+      liftLogs[today][id] = {
+        exercise_id: id,
+        exercise_name: exercise[1],
+
+        // Individual set records.
+        setEntries,
+
+        // Summary fields retained for compatibility.
+        sets: setEntries.length,
+        weight: setEntries[0].weight,
+        reps: setEntries[0].reps,
+
+        day: workouts[selectedDay].day,
+        updated_at: new Date().toISOString()
       };
 
       persistLocal();
       scheduleSave("lift");
 
-      message("#lift-message",`${exercise[1]} record saved successfully.`);
+      message("#lift-message", `${exercise[1]} saved: ${setEntries.length} individual sets.`);
+
       renderHistory();
       renderWeeklyHistory();
     });
   });
 
   renderHistory();
+}
+
+function updateSetNumbers(container) {
+  container.querySelectorAll(".lift-set-row").forEach((row, index) => {
+    row.querySelector("strong").textContent = `Set ${index + 1}`;
+    row.querySelector("[data-remove-set]")
+      ?.setAttribute("aria-label", `Remove set ${index + 1}`);
+  });
 }
 
 // Protein tracker
