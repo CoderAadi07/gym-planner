@@ -149,9 +149,7 @@ function getWeekDates(offset = 0) {
 
   monday.setDate(monday.getDate()-weekday-(offset*7));
 
-  return Array.from({length:7},(_,i) => {
-    return dateKey(addDays(monday,i));
-  });
+  return Array.from({length:7},(_,i) => dateKey(addDays(monday,i)));
 }
 
 function getWeekLabel(dates) {
@@ -250,35 +248,45 @@ function renderWorkout() {
   renderCardio();
 }
 
-
-// Exercise weight and individual set tracking
-
-function getSetEntries(record, plannedSets = 3, plannedReps = 8) {
+// Individual set tracking
+function getSetEntries(record,plannedSets = 3,plannedReps = 8) {
   if (Array.isArray(record?.setEntries) && record.setEntries.length) {
     return record.setEntries.map(set => ({
-      weight: set.weight ?? "",
-      reps: set.reps ?? ""
+      weight:set.weight ?? "",
+      reps:set.reps ?? ""
     }));
   }
 
-  // Read older records that used one shared weight and rep value.
-  const count = Math.max(1, Number(record?.sets) || plannedSets);
+  // Compatibility with older lifting records
+  const count = Math.max(1,Number(record?.sets) || plannedSets);
 
-  return Array.from({length: count}, () => ({
-    weight: record?.weight ?? "",
-    reps: record?.reps ?? plannedReps
+  return Array.from({length:count},() => ({
+    weight:record?.weight ?? "",
+    reps:record?.reps ?? plannedReps
   }));
+}
+
+function updateSetNumbers(container) {
+  container.querySelectorAll(".lift-set-row").forEach((row,index) => {
+    row.querySelector("strong").textContent = `Set ${index+1}`;
+
+    row.querySelector("[data-remove-set]")
+      ?.setAttribute("aria-label",`Remove set ${index+1}`);
+  });
 }
 
 function renderLiftTracker() {
   const container = document.querySelector("#lift-tracker");
   const todayRecords = liftLogs[dateKey()] || {};
 
-  container.innerHTML = workouts[selectedDay].exercises.map(([id, name, prescription]) => {
+  container.innerHTML = workouts[selectedDay].exercises.map(([id,name,prescription]) => {
     const record = todayRecords[id] || {};
-    const plannedSets = Number(String(prescription || "").match(/^\d+/)?.[0]) || 3;
-    const plannedReps = Number(String(prescription || "").match(/\d+/g)?.[1]) || 8;
-    const entries = getSetEntries(record, plannedSets, plannedReps);
+
+    const numbers = String(prescription || "").match(/\d+/g) || [];
+    const plannedSets = Number(numbers[0]) || 3;
+    const plannedReps = Number(numbers[1]) || 8;
+
+    const entries = getSetEntries(record,plannedSets,plannedReps);
 
     return `
       <div class="lift-card">
@@ -287,9 +295,9 @@ function renderLiftTracker() {
 
         <form class="lift-form" data-lift="${id}">
           <div class="individual-sets">
-            ${entries.map((set, index) => `
+            ${entries.map((set,index) => `
               <div class="lift-set-row">
-                <strong>Set ${index + 1}</strong>
+                <strong>Set ${index+1}</strong>
 
                 <label>
                   Weight (kg)
@@ -322,7 +330,7 @@ function renderLiftTracker() {
                   type="button"
                   class="button button-quiet remove-set"
                   data-remove-set
-                  aria-label="Remove set ${index + 1}"
+                  aria-label="Remove set ${index+1}"
                 >×</button>
               </div>
             `).join("")}
@@ -342,9 +350,10 @@ function renderLiftTracker() {
     `;
   }).join("");
 
-  // Add or remove individual sets.
   container.querySelectorAll(".lift-form").forEach(form => {
-    form.addEventListener("click", event => {
+
+    // Add or remove sets
+    form.addEventListener("click",event => {
       const addButton = event.target.closest("[data-add-set]");
       const removeButton = event.target.closest("[data-remove-set]");
       const rows = form.querySelector(".individual-sets");
@@ -353,12 +362,13 @@ function renderLiftTracker() {
         const count = rows.querySelectorAll(".lift-set-row").length;
 
         if (count >= 20) {
-          message("#lift-message", "Maximum 20 sets allowed.");
+          message("#lift-message","Maximum 20 sets allowed.");
           return;
         }
 
-        const nextNumber = count + 1;
+        const nextNumber = count+1;
         const row = document.createElement("div");
+
         row.className = "lift-set-row";
 
         row.innerHTML = `
@@ -405,7 +415,7 @@ function renderLiftTracker() {
         const allRows = rows.querySelectorAll(".lift-set-row");
 
         if (allRows.length <= 1) {
-          message("#lift-message", "An exercise must have at least one set.");
+          message("#lift-message","An exercise must have at least one set.");
           return;
         }
 
@@ -414,8 +424,8 @@ function renderLiftTracker() {
       }
     });
 
-    // Save all sets separately.
-    form.addEventListener("submit", event => {
+    // Save each set separately
+    form.addEventListener("submit",event => {
       event.preventDefault();
 
       const id = form.dataset.lift;
@@ -424,8 +434,8 @@ function renderLiftTracker() {
       const setRows = [...form.querySelectorAll(".lift-set-row")];
 
       const setEntries = setRows.map(row => ({
-        weight: Number(row.querySelector('[name="setWeight"]').value),
-        reps: Number(row.querySelector('[name="setReps"]').value)
+        weight:Number(row.querySelector('[name="setWeight"]').value),
+        reps:Number(row.querySelector('[name="setReps"]').value)
       }));
 
       const valid = setEntries.every(set =>
@@ -437,7 +447,7 @@ function renderLiftTracker() {
       );
 
       if (!valid || !setEntries.length) {
-        message("#lift-message", "Please enter valid weight and reps for every set.");
+        message("#lift-message","Please enter valid weight and reps for every set.");
         return;
       }
 
@@ -446,25 +456,26 @@ function renderLiftTracker() {
       if (!liftLogs[today]) liftLogs[today] = {};
 
       liftLogs[today][id] = {
-        exercise_id: id,
-        exercise_name: exercise[1],
+        exercise_id:id,
+        exercise_name:exercise[1],
 
-        // Individual set records.
+        // New individual set data
         setEntries,
 
-        // Summary fields retained for compatibility.
-        sets: setEntries.length,
-        weight: setEntries[0].weight,
-        reps: setEntries[0].reps,
+        // Compatibility summary fields for older records
+        sets:setEntries.length,
+        weight:setEntries[0].weight,
+        reps:setEntries[0].reps,
 
-        day: workouts[selectedDay].day,
-        updated_at: new Date().toISOString()
+        day:workouts[selectedDay].day,
+        updated_at:new Date().toISOString()
       };
 
       persistLocal();
       scheduleSave("lift");
 
-      message("#lift-message", `${exercise[1]} saved: ${setEntries.length} individual sets.`);
+      message("#lift-message",
+        `${exercise[1]} saved: ${setEntries.length} individual sets.`);
 
       renderHistory();
       renderWeeklyHistory();
@@ -474,18 +485,10 @@ function renderLiftTracker() {
   renderHistory();
 }
 
-function updateSetNumbers(container) {
-  container.querySelectorAll(".lift-set-row").forEach((row, index) => {
-    row.querySelector("strong").textContent = `Set ${index + 1}`;
-    row.querySelector("[data-remove-set]")
-      ?.setAttribute("aria-label", `Remove set ${index + 1}`);
-  });
-}
-
 // Protein tracker
 function renderProtein() {
   const grams = safeNumber(proteinLogs[dateKey()]);
-  const percentage = Math.min(grams / PROTEIN_TARGET * 100,100);
+  const percentage = Math.min(grams/PROTEIN_TARGET*100,100);
 
   document.querySelector("#protein-total").textContent = `${grams} g`;
   document.querySelector("#protein-remaining").textContent =
@@ -557,19 +560,28 @@ function getAllLiftRecords() {
   });
 }
 
+function formatLiftSets(record) {
+  const entries = getSetEntries(record);
+
+  return entries.map((set,index) =>
+    `Set ${index+1}: ${set.weight} kg × ${set.reps} reps`
+  ).join("<br>");
+}
+
 function renderHistory() {
   const container = document.querySelector("#strength-history");
   const records = getAllLiftRecords().slice(0,15);
 
   if (!records.length) {
-    container.innerHTML = '<p class="week-empty">No lifting records yet. Save your first exercise record above.</p>';
+    container.innerHTML =
+      '<p class="week-empty">No lifting records yet. Save your first exercise record above.</p>';
     return;
   }
 
   container.innerHTML = records.map(record => `
     <div class="history-card">
       <h3>${record.exercise_name || "Exercise"}</h3>
-      <p><strong>${record.weight} kg</strong> · ${record.sets} sets × ${record.reps} reps</p>
+      <p>${formatLiftSets(record)}</p>
       <p>${record.day || ""} · ${formatDate(record.date)}</p>
     </div>
   `).join("");
@@ -581,6 +593,7 @@ function setupWeekSelector() {
 
   selector.innerHTML = Array.from({length:12},(_,offset) => {
     const dates = getWeekDates(offset);
+
     const label = offset === 0
       ? `Current week · ${getWeekLabel(dates)}`
       : `${offset} week${offset===1?"":"s"} ago · ${getWeekLabel(dates)}`;
@@ -602,7 +615,7 @@ function renderWeeklyHistory() {
 
   document.querySelector("#week-range").textContent = getWeekLabel(dates);
 
-  // Workout totals: Monday to Saturday
+  // Workout totals
   let completedExercises = 0;
   let plannedExercises = 0;
   let completedSessions = 0;
@@ -612,6 +625,7 @@ function renderWeeklyHistory() {
     const done = completed[`${dates[day]}-${day}`] || [];
 
     plannedExercises += workout.exercises.length;
+
     completedExercises += workout.exercises.filter(
       exercise => done.includes(exercise[0])
     ).length;
@@ -635,7 +649,7 @@ function renderWeeklyHistory() {
   document.querySelector("#week-workout-percent").textContent =
     `${workoutPercent}%`;
 
-  // Protein totals: average across days with a saved entry
+  // Protein history
   const proteinEntries = dates
     .filter(date => Object.prototype.hasOwnProperty.call(proteinLogs,date))
     .map(date => safeNumber(proteinLogs[date]));
@@ -674,7 +688,7 @@ function renderWeeklyHistory() {
 
   document.querySelector("#week-cardio").textContent = `${cardioCount} / 7`;
 
-  // Dated body check-ins
+  // Body-weight check-ins
   const weeklyCheckins = dates
     .filter(date => checkinLogs[date] && checkinLogs[date].weight !== "" &&
       checkinLogs[date].weight !== undefined)
@@ -696,6 +710,7 @@ function renderWeeklyHistory() {
     const first = weeklyCheckins[0];
     const last = weeklyCheckins[weeklyCheckins.length-1];
     const difference = last.weight-first.weight;
+
     const changeText = difference > 0
       ? `+${difference.toFixed(1)} kg`
       : `${difference.toFixed(1)} kg`;
@@ -709,7 +724,7 @@ function renderWeeklyHistory() {
     `;
   }
 
-  // Strength records for the selected week
+  // Individual strength records for the selected week
   const weeklyLifts = getAllLiftRecords().filter(record => weekSet.has(record.date));
   const strengthContainer = document.querySelector("#week-strength-history");
 
@@ -720,13 +735,14 @@ function renderWeeklyHistory() {
     strengthContainer.innerHTML = weeklyLifts.map(record => `
       <div class="history-card">
         <h3>${record.exercise_name || "Exercise"}</h3>
-        <p><strong>${record.weight} kg</strong> · ${record.sets} sets × ${record.reps} reps</p>
+        <p>${formatLiftSets(record)}</p>
         <p>${record.day || ""} · ${formatDate(record.date)}</p>
       </div>
     `).join("");
   }
 
   const isFutureWeek = dates[0] > dateKey();
+
   message("#week-history-message",
     isFutureWeek ? "This week has not started yet." : "");
 }
@@ -774,6 +790,7 @@ async function saveCloud(type) {
   }
 
   if (type === "lift") {
+    // Includes every individual set in the JSONB payload.
     payload = {records:liftLogs[today] || {}};
   }
 
@@ -837,12 +854,14 @@ async function loadCloud() {
       if (payload.completed_by_day) {
         Object.entries(payload.completed_by_day).forEach(([day,items]) => {
           const key = `${date}-${day}`;
+
           completed[key] = [
             ...new Set([...(completed[key] || []),...(items || [])])
           ];
         });
       } else if (payload.completed) {
         const key = `${date}-${payload.day_index}`;
+
         completed[key] = [
           ...new Set([...(completed[key] || []),...payload.completed])
         ];
@@ -869,8 +888,9 @@ async function loadCloud() {
     }
   }
 
-  // Keep the latest dated check-in in the form
+  // Keep latest dated check-in in the form
   const checkinDates = Object.keys(checkinLogs).sort();
+
   if (checkinDates.length) {
     checkin = {...checkinLogs[checkinDates[checkinDates.length-1]]};
   }
