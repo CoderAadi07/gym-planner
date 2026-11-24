@@ -284,6 +284,65 @@ footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5p
   .protein-summary { align-items: flex-start; flex-direction: column; }
   .cardio-plan { align-items: flex-start; flex-direction: column; }
   .weekly-stats-grid { grid-template-columns: 1fr 1fr; }
+
+  
+/* Individual set tracking */
+.individual-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.lift-set-row {
+  display: grid;
+  grid-template-columns: 55px minmax(0, 1fr) minmax(0, 1fr) 38px;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.lift-set-row > strong {
+  padding-bottom: 12px;
+  font-size: 13px;
+}
+
+.lift-set-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lift-set-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.remove-set {
+  min-width: 36px;
+  padding: 8px;
+  font-size: 20px;
+}
+
+.lift-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .lift-set-row {
+    grid-template-columns: 45px minmax(0, 1fr) minmax(0, 1fr) 32px;
+    gap: 6px;
+    padding: 8px;
+  }
+}
+
   .weekly-stat-card { padding: 13px; }
   .weekly-stat-card strong { font-size: 21px; }
   .week-day-row { grid-template-columns: 42px 1fr auto; gap: 7px; }
