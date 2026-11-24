@@ -82,10 +82,12 @@ const workouts = [
 
 // Application state
 let selectedDay = (new Date().getDay() + 6) % 7;
+let selectedWeekOffset = 0;
 let saved = loadLocal();
 
 let completed = saved.completed || {};
 let checkin = saved.checkin || {};
+let checkinLogs = saved.checkinLogs || {};
 let proteinLogs = saved.proteinLogs || {};
 let cardioLogs = saved.cardioLogs || {};
 let liftLogs = saved.liftLogs || {};
@@ -107,6 +109,7 @@ function persistLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     completed,
     checkin,
+    checkinLogs,
     proteinLogs,
     cardioLogs,
     liftLogs
@@ -114,25 +117,62 @@ function persistLocal() {
 }
 
 // Date helpers
-function dateKey() {
-  const d = new Date();
+function dateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+}
 
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+function parseDate(key) {
+  const [year,month,day] = key.split("-").map(Number);
+  return new Date(year,month-1,day);
+}
+
+function addDays(date,amount) {
+  const result = new Date(date);
+  result.setDate(result.getDate()+amount);
+  return result;
+}
+
+function formatDate(key) {
+  return parseDate(key).toLocaleDateString("en-IN",{
+    day:"numeric",month:"short",year:"numeric"
+  });
 }
 
 function completionKey(day = selectedDay) {
   return `${dateKey()}-${day}`;
 }
 
+function getWeekDates(offset = 0) {
+  const today = new Date();
+  const monday = new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  const weekday = (monday.getDay()+6)%7;
+
+  monday.setDate(monday.getDate()-weekday-(offset*7));
+
+  return Array.from({length:7},(_,i) => {
+    return dateKey(addDays(monday,i));
+  });
+}
+
+function getWeekLabel(dates) {
+  return `${formatDate(dates[0])} – ${formatDate(dates[6])}`;
+}
+
 // UI helpers
-function status(messageText, type = "") {
+function status(messageText,type = "") {
   const el = document.querySelector("#connection-status");
   el.textContent = messageText;
   el.className = `status-pill ${type}`;
 }
 
-function message(selector, text) {
-  document.querySelector(selector).textContent = text || "";
+function message(selector,text) {
+  const el = document.querySelector(selector);
+  if (el) el.textContent = text || "";
+}
+
+function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 // Workout tabs
@@ -145,7 +185,7 @@ function renderTabs() {
   ).join("");
 
   document.querySelectorAll("[data-day]").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click",() => {
       selectedDay = Number(button.dataset.day);
       renderWorkout();
     });
@@ -158,17 +198,10 @@ function renderWorkout() {
   const key = completionKey();
   const done = completed[key] || [];
 
-  document.querySelector("#day-label").textContent =
-    workout.day.toUpperCase();
-
-  document.querySelector("#workout-title").textContent =
-    workout.title;
-
-  document.querySelector("#workout-focus").textContent =
-    workout.focus;
-
-  document.querySelector("#cardio-detail").textContent =
-    workout.cardio;
+  document.querySelector("#day-label").textContent = workout.day.toUpperCase();
+  document.querySelector("#workout-title").textContent = workout.title;
+  document.querySelector("#workout-focus").textContent = workout.focus;
+  document.querySelector("#cardio-detail").textContent = workout.cardio;
 
   document.querySelector("#exercise-list").innerHTML =
     workout.exercises.map(([id,name,reps]) => `
@@ -186,36 +219,29 @@ function renderWorkout() {
     `).join("");
 
   document.querySelectorAll("[data-exercise]").forEach(input => {
-    input.addEventListener("change", () => {
+    input.addEventListener("change",() => {
       const items = new Set(completed[key] || []);
 
-      if (input.checked) {
-        items.add(input.dataset.exercise);
-      } else {
-        items.delete(input.dataset.exercise);
-      }
+      if (input.checked) items.add(input.dataset.exercise);
+      else items.delete(input.dataset.exercise);
 
       completed[key] = [...items];
 
       persistLocal();
       renderWorkout();
       scheduleSave("workout");
+      renderWeeklyHistory();
     });
   });
 
-  const percent = Math.round(
-    done.length / workout.exercises.length * 100
-  );
+  const percent = Math.round(done.length / workout.exercises.length * 100);
 
   document.querySelector("#progress-ring")
     .style.setProperty("--progress",`${percent}%`);
 
-  document.querySelector("#progress-percent").textContent =
-    `${percent}%`;
-
+  document.querySelector("#progress-percent").textContent = `${percent}%`;
   document.querySelector("#completion-title").textContent =
     percent === 100 ? "Session complete" : "Keep building";
-
   document.querySelector("#completion-count").textContent =
     `${done.length} of ${workout.exercises.length} activities completed`;
 
@@ -229,59 +255,41 @@ function renderLiftTracker() {
   const container = document.querySelector("#lift-tracker");
   const todayRecords = liftLogs[dateKey()] || {};
 
-  container.innerHTML = workouts[selectedDay].exercises.map(
-    ([id,name,reps]) => {
-      const record = todayRecords[id] || {};
+  container.innerHTML = workouts[selectedDay].exercises.map(([id,name]) => {
+    const record = todayRecords[id] || {};
 
-      return `
-        <div class="lift-card">
-          <h3>${name}</h3>
-
-          <form class="lift-form" data-lift="${id}">
-            <div class="lift-input-grid">
-              <label>
-                Weight (kg)
-                <input type="number" name="weight"
-                  min="0" step="0.5"
-                  placeholder="0"
-                  value="${record.weight ?? ""}" required>
-              </label>
-
-              <label>
-                Sets
-                <input type="number" name="sets"
-                  min="1" max="20" step="1"
-                  placeholder="3"
-                  value="${record.sets ?? ""}" required>
-              </label>
-
-              <label>
-                Reps per set
-                <input type="number" name="reps"
-                  min="1" max="100" step="1"
-                  placeholder="8"
-                  value="${record.reps ?? ""}" required>
-              </label>
-            </div>
-
-            <div class="lift-actions">
-              <button class="button button-primary" type="submit">
-                Save record
-              </button>
-            </div>
-          </form>
-        </div>
-      `;
-    }
-  ).join("");
+    return `
+      <div class="lift-card">
+        <h3>${name}</h3>
+        <form class="lift-form" data-lift="${id}">
+          <div class="lift-input-grid">
+            <label>Weight (kg)
+              <input type="number" name="weight" min="0" step="0.5"
+                placeholder="0" value="${record.weight ?? ""}" required>
+            </label>
+            <label>Sets
+              <input type="number" name="sets" min="1" max="20" step="1"
+                placeholder="3" value="${record.sets ?? ""}" required>
+            </label>
+            <label>Reps per set
+              <input type="number" name="reps" min="1" max="100" step="1"
+                placeholder="8" value="${record.reps ?? ""}" required>
+            </label>
+          </div>
+          <div class="lift-actions">
+            <button class="button button-primary" type="submit">Save record</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }).join("");
 
   container.querySelectorAll(".lift-form").forEach(form => {
-    form.addEventListener("submit", event => {
+    form.addEventListener("submit",event => {
       event.preventDefault();
 
       const id = form.dataset.lift;
-      const exercise = workouts[selectedDay].exercises
-        .find(item => item[0] === id);
+      const exercise = workouts[selectedDay].exercises.find(item => item[0] === id);
 
       const weight = Number(form.elements.weight.value);
       const sets = Number(form.elements.sets.value);
@@ -296,27 +304,24 @@ function renderLiftTracker() {
         return;
       }
 
-      if (!liftLogs[dateKey()]) {
-        liftLogs[dateKey()] = {};
-      }
+      if (!liftLogs[dateKey()]) liftLogs[dateKey()] = {};
 
       liftLogs[dateKey()][id] = {
-        exercise_id: id,
-        exercise_name: exercise[1],
+        exercise_id:id,
+        exercise_name:exercise[1],
         weight,
         sets,
         reps,
-        day: workouts[selectedDay].day,
-        updated_at: new Date().toISOString()
+        day:workouts[selectedDay].day,
+        updated_at:new Date().toISOString()
       };
 
       persistLocal();
       scheduleSave("lift");
 
-      message("#lift-message",
-        `${exercise[1]} record saved successfully.`);
-
+      message("#lift-message",`${exercise[1]} record saved successfully.`);
       renderHistory();
+      renderWeeklyHistory();
     });
   });
 
@@ -325,112 +330,254 @@ function renderLiftTracker() {
 
 // Protein tracker
 function renderProtein() {
-  const grams = Number(proteinLogs[dateKey()] || 0);
-  const percentage = Math.min(
-    grams / PROTEIN_TARGET * 100,
-    100
-  );
+  const grams = safeNumber(proteinLogs[dateKey()]);
+  const percentage = Math.min(grams / PROTEIN_TARGET * 100,100);
 
-  document.querySelector("#protein-total").textContent =
-    `${grams} g`;
-
+  document.querySelector("#protein-total").textContent = `${grams} g`;
   document.querySelector("#protein-remaining").textContent =
     grams >= PROTEIN_TARGET
       ? "Daily target achieved!"
-      : `${PROTEIN_TARGET - grams} g remaining`;
+      : `${PROTEIN_TARGET-grams} g remaining`;
 
   document.querySelector("#protein-progress-fill")
     .style.width = `${percentage}%`;
 
-  document.querySelector("#protein-input").value =
-    grams || "";
+  document.querySelector("#protein-input").value = grams || "";
 }
 
-document.querySelector("#protein-form").addEventListener(
-  "submit", event => {
-    event.preventDefault();
+document.querySelector("#protein-form").addEventListener("submit",event => {
+  event.preventDefault();
 
-    const grams = Number(
-      document.querySelector("#protein-input").value
-    );
+  const grams = Number(document.querySelector("#protein-input").value);
 
-    if (!Number.isFinite(grams) || grams < 0 || grams > 1000) {
-      message("#protein-message","Enter a valid protein amount.");
-      return;
-    }
-
-    proteinLogs[dateKey()] = grams;
-
-    persistLocal();
-    renderProtein();
-    scheduleSave("protein");
-
-    message("#protein-message",
-      "Daily protein intake saved.");
+  if (!Number.isFinite(grams) || grams < 0 || grams > 1000) {
+    message("#protein-message","Enter a valid protein amount.");
+    return;
   }
-);
+
+  proteinLogs[dateKey()] = grams;
+
+  persistLocal();
+  renderProtein();
+  scheduleSave("protein");
+  renderWeeklyHistory();
+
+  message("#protein-message","Daily protein intake saved.");
+});
 
 // Cardio tracker
 function renderCardio() {
   const workout = workouts[selectedDay];
 
-  document.querySelector("#cardio-plan-text").textContent =
-    workout.cardio;
-
+  document.querySelector("#cardio-plan-text").textContent = workout.cardio;
   document.querySelector("#cardio-completed").checked =
     Boolean(cardioLogs[dateKey()]);
 }
 
-document.querySelector("#cardio-completed").addEventListener(
-  "change", event => {
-    cardioLogs[dateKey()] = event.target.checked;
+document.querySelector("#cardio-completed").addEventListener("change",event => {
+  cardioLogs[dateKey()] = event.target.checked;
 
-    persistLocal();
-    scheduleSave("cardio");
+  persistLocal();
+  scheduleSave("cardio");
+  renderWeeklyHistory();
 
-    message("#cardio-message",
-      event.target.checked
-        ? "Cardio completed. Great work!"
-        : "Cardio marked as incomplete.");
-  }
-);
+  message("#cardio-message",
+    event.target.checked
+      ? "Cardio completed. Great work!"
+      : "Cardio marked as incomplete.");
+});
 
 // Strength history
-function renderHistory() {
-  const container = document.querySelector("#strength-history");
-
+function getAllLiftRecords() {
   const records = [];
 
-  Object.entries(liftLogs).forEach(([date, exercises]) => {
+  Object.entries(liftLogs).forEach(([date,exercises]) => {
     Object.values(exercises || {}).forEach(record => {
       records.push({...record,date});
     });
   });
 
-  records.sort((a,b) => {
-    if (a.date !== b.date) {
-      return b.date.localeCompare(a.date);
-    }
+  return records.sort((a,b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
     return (b.updated_at || "").localeCompare(a.updated_at || "");
   });
+}
 
-  const recent = records.slice(0,15);
+function renderHistory() {
+  const container = document.querySelector("#strength-history");
+  const records = getAllLiftRecords().slice(0,15);
 
-  if (!recent.length) {
-    container.textContent = "No lifting records yet. Save your first exercise record above.";
+  if (!records.length) {
+    container.innerHTML = '<p class="week-empty">No lifting records yet. Save your first exercise record above.</p>';
     return;
   }
 
-  container.innerHTML = recent.map(record => `
+  container.innerHTML = records.map(record => `
     <div class="history-card">
-      <h3>${record.exercise_name}</h3>
+      <h3>${record.exercise_name || "Exercise"}</h3>
       <p><strong>${record.weight} kg</strong> · ${record.sets} sets × ${record.reps} reps</p>
-      <p>${record.day || ""} · ${record.date}</p>
+      <p>${record.day || ""} · ${formatDate(record.date)}</p>
     </div>
   `).join("");
 }
 
-// Supabase cloud synchronization
+// Weekly progress history
+function setupWeekSelector() {
+  const selector = document.querySelector("#week-selector");
+
+  selector.innerHTML = Array.from({length:12},(_,offset) => {
+    const dates = getWeekDates(offset);
+    const label = offset === 0
+      ? `Current week · ${getWeekLabel(dates)}`
+      : `${offset} week${offset===1?"":"s"} ago · ${getWeekLabel(dates)}`;
+
+    return `<option value="${offset}">${label}</option>`;
+  }).join("");
+
+  selector.value = String(selectedWeekOffset);
+
+  selector.addEventListener("change",() => {
+    selectedWeekOffset = Number(selector.value);
+    renderWeeklyHistory();
+  });
+}
+
+function renderWeeklyHistory() {
+  const dates = getWeekDates(selectedWeekOffset);
+  const weekSet = new Set(dates);
+
+  document.querySelector("#week-range").textContent = getWeekLabel(dates);
+
+  // Workout totals: Monday to Saturday
+  let completedExercises = 0;
+  let plannedExercises = 0;
+  let completedSessions = 0;
+
+  for (let day = 0; day < 6; day++) {
+    const workout = workouts[day];
+    const done = completed[`${dates[day]}-${day}`] || [];
+
+    plannedExercises += workout.exercises.length;
+    completedExercises += workout.exercises.filter(
+      exercise => done.includes(exercise[0])
+    ).length;
+
+    if (workout.exercises.length > 0 &&
+        workout.exercises.every(exercise => done.includes(exercise[0]))) {
+      completedSessions++;
+    }
+  }
+
+  const workoutPercent = plannedExercises
+    ? Math.round(completedExercises/plannedExercises*100)
+    : 0;
+
+  document.querySelector("#week-workouts").textContent =
+    `${completedSessions} / 6`;
+
+  document.querySelector("#week-workouts-detail").textContent =
+    `${completedExercises} of ${plannedExercises} exercises checked`;
+
+  document.querySelector("#week-workout-percent").textContent =
+    `${workoutPercent}%`;
+
+  // Protein totals: average across days with a saved entry
+  const proteinEntries = dates
+    .filter(date => Object.prototype.hasOwnProperty.call(proteinLogs,date))
+    .map(date => safeNumber(proteinLogs[date]));
+
+  const proteinAverage = proteinEntries.length
+    ? Math.round(proteinEntries.reduce((sum,value) => sum+value,0)/proteinEntries.length)
+    : 0;
+
+  document.querySelector("#week-protein-average").textContent =
+    `${proteinAverage} g`;
+
+  document.querySelector("#week-protein-detail").textContent =
+    proteinEntries.length
+      ? `Average of ${proteinEntries.length} logged day(s) · Target 150 g`
+      : "No protein entries saved this week";
+
+  const proteinContainer = document.querySelector("#week-protein-days");
+
+  proteinContainer.innerHTML = dates.map((date,index) => {
+    const logged = Object.prototype.hasOwnProperty.call(proteinLogs,date);
+    const grams = logged ? safeNumber(proteinLogs[date]) : 0;
+    const width = Math.min(grams/PROTEIN_TARGET*100,100);
+    const dayName = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][index];
+
+    return `
+      <div class="week-day-row">
+        <span>${dayName}</span>
+        <div class="week-day-bar"><span style="width:${width}%"></span></div>
+        <span class="week-day-value">${logged ? `${grams}g` : "—"}</span>
+      </div>
+    `;
+  }).join("");
+
+  // Cardio totals
+  const cardioCount = dates.filter(date => cardioLogs[date] === true).length;
+
+  document.querySelector("#week-cardio").textContent = `${cardioCount} / 7`;
+
+  // Dated body check-ins
+  const weeklyCheckins = dates
+    .filter(date => checkinLogs[date] && checkinLogs[date].weight !== "" &&
+      checkinLogs[date].weight !== undefined)
+    .map(date => ({
+      date,
+      weight:safeNumber(checkinLogs[date].weight),
+      waist:checkinLogs[date].waist,
+      bench:checkinLogs[date].bench
+    }))
+    .filter(item => item.weight > 0)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
+  const weightContainer = document.querySelector("#week-weight-summary");
+
+  if (!weeklyCheckins.length) {
+    weightContainer.innerHTML =
+      "No dated weight check-ins recorded for this week. Save your body check-in to start tracking.";
+  } else {
+    const first = weeklyCheckins[0];
+    const last = weeklyCheckins[weeklyCheckins.length-1];
+    const difference = last.weight-first.weight;
+    const changeText = difference > 0
+      ? `+${difference.toFixed(1)} kg`
+      : `${difference.toFixed(1)} kg`;
+
+    weightContainer.innerHTML = `
+      <p>First recorded: <strong>${first.weight.toFixed(1)} kg</strong> · ${formatDate(first.date)}</p>
+      <p>Latest recorded: <strong>${last.weight.toFixed(1)} kg</strong> · ${formatDate(last.date)}</p>
+      <p>Change: <span class="weight-change">${weeklyCheckins.length > 1 ? changeText : "One check-in recorded"}</span></p>
+      ${last.waist ? `<p>Latest waist: <strong>${last.waist} cm</strong></p>` : ""}
+      ${last.bench ? `<p>Bench press check-in: <strong>${last.bench} kg</strong></p>` : ""}
+    `;
+  }
+
+  // Strength records for the selected week
+  const weeklyLifts = getAllLiftRecords().filter(record => weekSet.has(record.date));
+  const strengthContainer = document.querySelector("#week-strength-history");
+
+  if (!weeklyLifts.length) {
+    strengthContainer.innerHTML =
+      '<p class="week-empty">No strength records saved during this week.</p>';
+  } else {
+    strengthContainer.innerHTML = weeklyLifts.map(record => `
+      <div class="history-card">
+        <h3>${record.exercise_name || "Exercise"}</h3>
+        <p><strong>${record.weight} kg</strong> · ${record.sets} sets × ${record.reps} reps</p>
+        <p>${record.day || ""} · ${formatDate(record.date)}</p>
+      </div>
+    `).join("");
+  }
+
+  const isFutureWeek = dates[0] > dateKey();
+  message("#week-history-message",
+    isFutureWeek ? "This week has not started yet." : "");
+}
+
+// Cloud synchronization
 function scheduleSave(type) {
   if (!currentUser || !supabase) return;
 
@@ -444,11 +591,11 @@ function scheduleSave(type) {
 async function saveCloud(type) {
   if (!currentUser || !supabase) return;
 
+  const today = dateKey();
   let payload = {};
 
   if (type === "workout") {
-    const prefix = `${dateKey()}-`;
-
+    const prefix = `${today}-`;
     const completedByDay = {};
 
     Object.entries(completed).forEach(([key,value]) => {
@@ -457,37 +604,37 @@ async function saveCloud(type) {
       }
     });
 
-    payload = {completed_by_day: completedByDay};
+    payload = {completed_by_day:completedByDay};
   }
 
   if (type === "checkin") {
-    payload = {...checkin};
+    payload = {...(checkinLogs[today] || checkin)};
   }
 
   if (type === "protein") {
-    payload = {grams: Number(proteinLogs[dateKey()] || 0)};
+    payload = {grams:safeNumber(proteinLogs[today])};
   }
 
   if (type === "cardio") {
-    payload = {completed: Boolean(cardioLogs[dateKey()])};
+    payload = {completed:Boolean(cardioLogs[today])};
   }
 
   if (type === "lift") {
-    payload = {records: liftLogs[dateKey()] || {}};
+    payload = {records:liftLogs[today] || {}};
   }
 
   const row = {
-    user_id: currentUser.id,
-    record_date: dateKey(),
-    record_type: type,
+    user_id:currentUser.id,
+    record_date:today,
+    record_type:type,
     payload,
-    updated_at: new Date().toISOString()
+    updated_at:new Date().toISOString()
   };
 
   const {error} = await supabase
     .from("user_progress")
-    .upsert(row, {
-      onConflict: "user_id,record_date,record_type"
+    .upsert(row,{
+      onConflict:"user_id,record_date,record_type"
     });
 
   if (error) {
@@ -502,10 +649,7 @@ async function saveCloud(type) {
       lift:"#lift-message"
     }[type];
 
-    if (target) {
-      message(target,`Cloud save failed: ${error.message}`);
-    }
-
+    if (target) message(target,`Cloud save failed: ${error.message}`);
     return;
   }
 
@@ -537,37 +681,26 @@ async function loadCloud() {
 
     if (row.record_type === "workout") {
       if (payload.completed_by_day) {
-        Object.entries(payload.completed_by_day).forEach(
-          ([day,items]) => {
-            const key = `${date}-${day}`;
-
-            completed[key] = [
-              ...new Set([
-                ...(completed[key] || []),
-                ...(items || [])
-              ])
-            ];
-          }
-        );
+        Object.entries(payload.completed_by_day).forEach(([day,items]) => {
+          const key = `${date}-${day}`;
+          completed[key] = [
+            ...new Set([...(completed[key] || []),...(items || [])])
+          ];
+        });
       } else if (payload.completed) {
-        // Compatibility with your previous workout records
         const key = `${date}-${payload.day_index}`;
-
         completed[key] = [
-          ...new Set([
-            ...(completed[key] || []),
-            ...payload.completed
-          ])
+          ...new Set([...(completed[key] || []),...payload.completed])
         ];
       }
     }
 
     if (row.record_type === "checkin") {
-      checkin = {...checkin,...payload};
+      checkinLogs[date] = {...payload};
     }
 
     if (row.record_type === "protein") {
-      proteinLogs[date] = Number(payload.grams || 0);
+      proteinLogs[date] = safeNumber(payload.grams);
     }
 
     if (row.record_type === "cardio") {
@@ -582,12 +715,19 @@ async function loadCloud() {
     }
   }
 
+  // Keep the latest dated check-in in the form
+  const checkinDates = Object.keys(checkinLogs).sort();
+  if (checkinDates.length) {
+    checkin = {...checkinLogs[checkinDates[checkinDates.length-1]]};
+  }
+
   persistLocal();
 
   renderWorkout();
   renderProtein();
   renderCardio();
   renderHistory();
+  renderWeeklyHistory();
   fillCheckin();
 
   status("Cloud synced","online");
@@ -595,14 +735,11 @@ async function loadCloud() {
 
 // Weekly check-in
 function fillCheckin() {
-  document.querySelector("#weight-input").value =
-    checkin.weight || "";
+  const todayCheckin = checkinLogs[dateKey()] || checkin || {};
 
-  document.querySelector("#waist-input").value =
-    checkin.waist || "";
-
-  document.querySelector("#bench-input").value =
-    checkin.bench || "";
+  document.querySelector("#weight-input").value = todayCheckin.weight || "";
+  document.querySelector("#waist-input").value = todayCheckin.waist || "";
+  document.querySelector("#bench-input").value = todayCheckin.bench || "";
 }
 
 // Authentication UI
@@ -614,19 +751,16 @@ function updateAuthUI() {
     .classList.toggle("hidden",!currentUser);
 
   document.querySelector("#auth-heading").textContent =
-    currentUser
-      ? "Account connected"
-      : (signupMode ? "Create account" : "Sign in to sync");
+    currentUser ? "Account connected" : (signupMode ? "Create account" : "Sign in to sync");
 
   document.querySelector("#auth-submit").textContent =
     signupMode ? "Create account" : "Sign in";
 
   document.querySelector("#toggle-auth-mode").textContent =
-    signupMode
-      ? "Already have an account? Sign in"
-      : "Need an account? Create one";
+    signupMode ? "Already have an account? Sign in" : "Need an account? Create one";
 }
 
+// Session refresh
 async function refreshSession() {
   if (!supabase) {
     status("Local mode");
@@ -638,17 +772,13 @@ async function refreshSession() {
   if (error) console.error(error);
 
   currentUser = data?.session?.user || null;
-
   updateAuthUI();
 
-  if (currentUser) {
-    await loadCloud();
-  } else {
-    status("Signed out");
-  }
+  if (currentUser) await loadCloud();
+  else status("Signed out");
 }
 
-// Open and close authentication dialog
+// Authentication dialog
 document.querySelector("#auth-button").addEventListener("click",() => {
   updateAuthUI();
   document.querySelector("#auth-dialog").showModal();
@@ -658,87 +788,73 @@ document.querySelector("#close-auth").addEventListener("click",() => {
   document.querySelector("#auth-dialog").close();
 });
 
-document.querySelector("#toggle-auth-mode").addEventListener(
-  "click",() => {
-    signupMode = !signupMode;
-    updateAuthUI();
-    message("#auth-message","");
-  }
-);
+document.querySelector("#toggle-auth-mode").addEventListener("click",() => {
+  signupMode = !signupMode;
+  updateAuthUI();
+  message("#auth-message","");
+});
 
 // Login and signup
-document.querySelector("#auth-form").addEventListener(
-  "submit",async event => {
-    event.preventDefault();
+document.querySelector("#auth-form").addEventListener("submit",async event => {
+  event.preventDefault();
 
-    if (!supabase) {
-      message("#auth-message",
-        "Check your Supabase credentials in app.js.");
-      return;
-    }
+  if (!supabase) {
+    message("#auth-message","Check your Supabase credentials in app.js.");
+    return;
+  }
 
-    const email =
-      document.querySelector("#auth-email").value.trim();
+  const email = document.querySelector("#auth-email").value.trim();
+  const password = document.querySelector("#auth-password").value;
+  const button = document.querySelector("#auth-submit");
 
-    const password =
-      document.querySelector("#auth-password").value;
+  button.disabled = true;
+  button.textContent = "Please wait…";
 
-    const button = document.querySelector("#auth-submit");
-
-    button.disabled = true;
-    button.textContent = "Please wait…";
-
+  try {
     const result = signupMode
       ? await supabase.auth.signUp({
           email,
           password,
-          options: {
-            emailRedirectTo: window.location.origin
-          }
+          options:{emailRedirectTo:window.location.origin}
         })
-      : await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-
-    button.disabled = false;
-    updateAuthUI();
+      : await supabase.auth.signInWithPassword({email,password});
 
     if (result.error) {
       message("#auth-message",result.error.message);
     } else if (signupMode && !result.data.session) {
-      message("#auth-message",
-        "Account created. Check your email to confirm, then sign in.");
+      message("#auth-message","Account created. Check your email to confirm, then sign in.");
     } else {
-      currentUser =
-        result.data.user || result.data.session?.user || null;
-
+      currentUser = result.data.user || result.data.session?.user || null;
       message("#auth-message","Signed in successfully.");
 
       if (currentUser) {
         await loadCloud();
+        document.querySelector("#auth-dialog").close();
       }
     }
+  } catch (error) {
+    message("#auth-message",error.message || "Authentication failed.");
+  } finally {
+    button.disabled = false;
+    updateAuthUI();
   }
-);
+});
 
 // Sign out
-document.querySelector("#sign-out-button").addEventListener(
-  "click",async () => {
-    if (!supabase) return;
+document.querySelector("#sign-out-button").addEventListener("click",async () => {
+  if (!supabase) return;
 
-    const {error} = await supabase.auth.signOut();
+  const {error} = await supabase.auth.signOut();
 
-    if (error) {
-      message("#auth-message",error.message);
-    } else {
-      currentUser = null;
-      updateAuthUI();
-      status("Signed out");
-      message("#auth-message","You have signed out.");
-    }
+  if (error) {
+    message("#auth-message",error.message);
+  } else {
+    currentUser = null;
+    updateAuthUI();
+    status("Signed out");
+    message("#auth-message","You have signed out.");
   }
-);
+});
 
 // Reset workout
 document.querySelector("#reset-day").addEventListener("click",() => {
@@ -747,28 +863,30 @@ document.querySelector("#reset-day").addEventListener("click",() => {
   persistLocal();
   renderWorkout();
   scheduleSave("workout");
+  renderWeeklyHistory();
 });
 
 // Save weekly check-in
-document.querySelector("#checkin-form").addEventListener(
-  "submit",event => {
-    event.preventDefault();
+document.querySelector("#checkin-form").addEventListener("submit",event => {
+  event.preventDefault();
 
-    checkin = {
-      weight:document.querySelector("#weight-input").value,
-      waist:document.querySelector("#waist-input").value,
-      bench:document.querySelector("#bench-input").value
-    };
+  checkin = {
+    weight:document.querySelector("#weight-input").value,
+    waist:document.querySelector("#waist-input").value,
+    bench:document.querySelector("#bench-input").value
+  };
 
-    persistLocal();
-    scheduleSave("checkin");
+  checkinLogs[dateKey()] = {...checkin};
 
-    message("#checkin-message",
-      currentUser
-        ? "Check-in saved; syncing…"
-        : "Saved on this device. Sign in to sync across devices.");
-  }
-);
+  persistLocal();
+  scheduleSave("checkin");
+  renderWeeklyHistory();
+
+  message("#checkin-message",
+    currentUser
+      ? "Check-in saved; syncing…"
+      : "Saved on this device. Sign in to sync across devices.");
+});
 
 // Listen for authentication changes
 if (supabase) {
@@ -785,11 +903,13 @@ if (supabase) {
 }
 
 // Start application
+setupWeekSelector();
 renderTabs();
 renderWorkout();
 renderProtein();
 renderCardio();
 renderHistory();
+renderWeeklyHistory();
 fillCheckin();
 updateAuthUI();
 refreshSession();
