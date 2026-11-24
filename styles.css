@@ -50,6 +50,7 @@ body {
 .button-primary { background: var(--lime); color: #172014; }
 .button-quiet { background: #1b2920; color: var(--text); border: 1px solid var(--line); }
 .button:hover { filter: brightness(1.08); }
+button:disabled { opacity: .55; cursor: not-allowed; }
 
 main { display: grid; gap: 26px; }
 .hero-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
@@ -86,7 +87,7 @@ main { display: grid; gap: 26px; }
 .section-heading p, .muted { color: var(--muted); font-size: 13px; margin: 0; }
 .session-length { color: var(--muted); font-size: 12px; }
 
-.day-tabs { display: grid; grid-template-columns: repeat(7,1fr); gap: 9px; }
+.day-tabs { display: grid; grid-template-columns: repeat(7,1fr); gap: 9px; margin-bottom: 16px; }
 .day-tab { background: #142019; border: 1px solid var(--line); border-radius: 14px; padding: 14px 8px; color: var(--text); cursor: pointer; }
 .day-tab strong, .day-tab span { display: block; }
 .day-tab strong { font-size: 13px; }
@@ -119,6 +120,104 @@ main { display: grid; gap: 26px; }
 .coach-note strong { font-size: 12px; color: var(--lime); }
 .coach-note p { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 6px 0 0; }
 
+/* New tracking sections */
+.tracker-panel h2, .panel h2 { font-family: 'Space Grotesk'; }
+.tracker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+.tracker-form { display: grid; gap: 12px; margin-top: 22px; }
+.tracker-form label, .tracker-list label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input, select {
+  font-family: 'DM Sans', sans-serif;
+}
+
+.tracker-form input, .tracker-list input {
+  width: 100%;
+  min-width: 0;
+  background: #0b140e;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.protein-progress { margin-top: 23px; }
+.protein-progress-bar {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #304136;
+}
+.protein-progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--lime);
+  border-radius: inherit;
+  transition: width .3s ease;
+}
+.protein-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  gap: 12px;
+}
+.protein-summary strong {
+  font: 700 24px 'Space Grotesk';
+}
+.protein-summary span { font-size: 12px; color: var(--muted); }
+
+.cardio-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 17px;
+  background: #0e1812;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 22px;
+}
+.cardio-plan strong { font-size: 13px; }
+.cardio-plan p { font-size: 12px; color: var(--muted); margin: 7px 0 0; }
+.cardio-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cardio-check input { width: 18px; height: 18px; accent-color: var(--lime); }
+
+.tracker-list, .history-list { display: grid; gap: 12px; margin-top: 18px; }
+.lift-card, .history-card {
+  background: #0e1812;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+.lift-card h3, .history-card h3 {
+  font: 600 15px 'Space Grotesk';
+  margin: 0 0 13px;
+}
+.lift-input-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 10px;
+}
+.lift-input-grid label { min-width: 0; }
+.lift-input-grid input { margin-top: 7px; }
+.lift-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.history-card p { color: var(--muted); font-size: 12px; margin: 5px 0; }
+
 .nutrition-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
 .nutrition-card span, .nutrition-card small { display: block; color: var(--muted); font-size: 12px; }
 .nutrition-card strong { display: block; font: 700 25px 'Space Grotesk'; margin: 7px 0 2px; }
@@ -150,7 +249,7 @@ footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5p
 
 @media(max-width:800px) {
   .app-shell { padding: 17px 14px; }
-  .hero-grid, .workout-layout, .checkin-panel { grid-template-columns: 1fr; }
+  .hero-grid, .workout-layout, .checkin-panel, .tracker-grid { grid-template-columns: 1fr; }
   .day-tabs { grid-template-columns: repeat(4,1fr); }
   .nutrition-grid { grid-template-columns: repeat(2,1fr); }
   .checkin-form { grid-template-columns: 1fr 1fr; }
@@ -168,4 +267,7 @@ footer { text-align: center; color: #6f8273; font-size: 11px; padding: 27px 0 5p
   .exercise-item { grid-template-columns: 20px 1fr; }
   .exercise-tag { grid-column: 2; }
   .checkin-form { grid-template-columns: 1fr; }
+  .lift-input-grid { grid-template-columns: 1fr; }
+  .protein-summary { align-items: flex-start; flex-direction: column; }
+  .cardio-plan { align-items: flex-start; flex-direction: column; }
 }
