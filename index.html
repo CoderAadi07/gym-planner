@@ -79,22 +79,10 @@
 
         <aside class="panel details-panel">
           <h3>Session Details</h3>
-          <div class="detail-row">
-            <span>Cardio plan</span>
-            <strong id="cardio-detail">10–12 min treadmill</strong>
-          </div>
-          <div class="detail-row">
-            <span>Compound rest</span>
-            <strong>2–3 min</strong>
-          </div>
-          <div class="detail-row">
-            <span>Isolation rest</span>
-            <strong>60–90 sec</strong>
-          </div>
-          <div class="detail-row">
-            <span>Effort target</span>
-            <strong>1–3 RIR</strong>
-          </div>
+          <div class="detail-row"><span>Cardio plan</span><strong id="cardio-detail">10–12 min treadmill</strong></div>
+          <div class="detail-row"><span>Compound rest</span><strong>2–3 min</strong></div>
+          <div class="detail-row"><span>Isolation rest</span><strong>60–90 sec</strong></div>
+          <div class="detail-row"><span>Effort target</span><strong>1–3 RIR</strong></div>
           <div class="coach-note">
             <strong>COACH'S NOTE</strong>
             <p>Record your working weights and reps. Focus on controlled technique and progressive overload.</p>
@@ -111,32 +99,24 @@
           <p>Record your working weight, sets and reps for today's exercises.</p>
         </div>
       </div>
-      <div id="lift-tracker" class="tracker-list">
-        Loading exercises…
-      </div>
+      <div id="lift-tracker" class="tracker-list">Loading exercises…</div>
       <p id="lift-message" class="inline-message"></p>
     </section>
 
     <section class="tracker-grid">
-
       <div class="panel">
         <p class="eyebrow">DAILY NUTRITION</p>
         <h2>Protein Tracker</h2>
         <p class="muted">Your daily protein target is 150 grams.</p>
-
         <div class="protein-progress">
-          <div class="protein-progress-bar">
-            <span id="protein-progress-fill"></span>
-          </div>
+          <div class="protein-progress-bar"><span id="protein-progress-fill"></span></div>
           <div class="protein-summary">
             <strong id="protein-total">0 g</strong>
             <span id="protein-remaining">150 g remaining</span>
           </div>
         </div>
-
         <form id="protein-form" class="tracker-form">
-          <label>
-            Protein consumed (grams)
+          <label>Protein consumed (grams)
             <input id="protein-input" type="number" min="0" max="1000" step="1" placeholder="Enter grams" required>
           </label>
           <button class="button button-primary" type="submit">Save protein intake</button>
@@ -148,7 +128,6 @@
         <p class="eyebrow">CARDIO MANAGEMENT</p>
         <h2>Daily Cardio</h2>
         <p class="muted">Check off cardio once you complete it.</p>
-
         <div class="cardio-plan">
           <div>
             <strong>Today's planned cardio</strong>
@@ -161,7 +140,6 @@
         </div>
         <p id="cardio-message" class="inline-message"></p>
       </div>
-
     </section>
 
     <section class="panel">
@@ -172,9 +150,70 @@
           <p>Review your recent exercise performance.</p>
         </div>
       </div>
-      <div id="strength-history" class="history-list">
-        No lifting records yet.
+      <div id="strength-history" class="history-list">No lifting records yet.</div>
+    </section>
+
+    <!-- NEW: WEEKLY PROGRESS HISTORY -->
+    <section class="panel weekly-history-panel" id="weekly-history">
+      <div class="section-heading weekly-heading">
+        <div>
+          <p class="eyebrow">YOUR FITNESS JOURNEY</p>
+          <h2>Weekly Progress History</h2>
+          <p>Review your training, nutrition, cardio and strength for any recent week.</p>
+        </div>
+        <label class="week-selector-label">
+          Select week
+          <select id="week-selector" aria-label="Select a week"></select>
+        </label>
       </div>
+
+      <div class="week-range" id="week-range">Loading week…</div>
+
+      <div class="weekly-stats-grid">
+        <article class="weekly-stat-card">
+          <span>Workouts completed</span>
+          <strong id="week-workouts">0 / 6</strong>
+          <small id="week-workouts-detail">Completed sessions</small>
+        </article>
+        <article class="weekly-stat-card">
+          <span>Workout completion</span>
+          <strong id="week-workout-percent">0%</strong>
+          <small>Of planned exercises</small>
+        </article>
+        <article class="weekly-stat-card">
+          <span>Average protein</span>
+          <strong id="week-protein-average">0 g</strong>
+          <small id="week-protein-detail">Target: 150 g/day</small>
+        </article>
+        <article class="weekly-stat-card">
+          <span>Cardio sessions</span>
+          <strong id="week-cardio">0 / 7</strong>
+          <small>Days marked complete</small>
+        </article>
+      </div>
+
+      <div class="weekly-detail-grid">
+        <article class="weekly-detail-card">
+          <h3>Daily protein intake</h3>
+          <div id="week-protein-days" class="week-day-list"></div>
+        </article>
+
+        <article class="weekly-detail-card">
+          <h3>Body-weight progress</h3>
+          <div id="week-weight-summary" class="weight-summary">
+            No dated check-ins recorded for this week.
+          </div>
+        </article>
+      </div>
+
+      <article class="weekly-detail-card weekly-strength-card">
+        <h3>Strength records this week</h3>
+        <div id="week-strength-history" class="history-list">
+          No strength records for this week.
+        </div>
+      </article>
+
+      <p id="week-history-message" class="inline-message" aria-live="polite"></p>
     </section>
 
     <section class="panel">
@@ -197,7 +236,7 @@
       <div>
         <p class="eyebrow">WEEKLY PROGRESS</p>
         <h2>Body Check-in</h2>
-        <p class="muted">Track bodyweight, waist and bench press progress.</p>
+        <p class="muted">Track bodyweight, waist and bench press progress. Save a check-in each week to build your history.</p>
       </div>
       <form id="checkin-form" class="checkin-form">
         <label>Weight (kg)
